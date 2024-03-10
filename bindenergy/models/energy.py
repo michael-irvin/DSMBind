@@ -156,6 +156,57 @@ class AllAtomEnergyModel(FARigidModel):
         c2 = (1 - torch.cos(c)) / (c ** 2).clamp(min=1e-6)
         cross = lambda a,b : torch.cross(a, b, dim=-1)
         return X + c1 * cross(w, X) + c2 * cross(w, cross(w, X))
+    
+    def random_rotate_translate(self, binder):
+        true_X, bind_S, bind_A, _ = binder
+#         tgt_X, tgt_S, tgt_A, _ = target
+
+        # B, N, M = bind_S.size(0), bind_S.size(1), tgt_X.size(1)
+    
+        B, N = bind_S.size(0), bind_S.size(1)
+        bind_mask = bind_A[:,:,1].clamp(max=1).float()
+#         tgt_mask = tgt_A[:,:,1].clamp(max=1).float()
+        bind_A = bind_A * (true_X.norm(dim=-1) > 1e-4).long() 
+#         tgt_A = tgt_A * (tgt_X.norm(dim=-1) > 1e-4).long() 
+#         sc_mask = (bind_A[:,:,4:] > 0).float().view(B*N, 10)
+#         has_sc = sc_mask.sum(dim=-1).clamp(max=1)
+
+        # Random backbone rotation + translation
+        sidx = [random.randint(0, 99) for _ in range(B)]
+        sigma = torch.tensor([self.sigma_range[i] for i in sidx]).float().cuda()
+        tidx = [np.random.choice(list(range(100)), p=self.density[i]) for i in sidx]
+        theta = torch.tensor([self.theta_range[i] for i in tidx]).float().cuda()
+        w = torch.randn(B, 3).cuda()
+        hat_w = F.normalize(w, dim=-1)
+        w = hat_w * theta.unsqueeze(-1)
+        eps = np.random.uniform(0.1, 1.0, size=B)
+        eps = torch.tensor(eps).float().cuda().unsqueeze(-1)
+        hat_t = torch.randn(B, 3).cuda() * eps
+        # Apply
+        center = self.mean(true_X[:,:,1], bind_mask)
+        bind_X = true_X - center[:,None,None,:]
+        bind_X = self.rotate(bind_X, w) + hat_t[:,None,None,:]
+        bind_X = bind_X + center[:,None,None,:]
+
+        # Random side chain rotation
+        aidx = [random.randint(0, 99) for _ in range(B * N)]
+        sigma = torch.tensor([self.sigma_range[i] for i in aidx]).float().cuda()
+        bidx = [np.random.choice(list(range(100)), p=self.density[i]) for i in aidx]
+        theta = torch.tensor([self.theta_range[i] for i in bidx]).float().cuda()
+        u = torch.randn(B*N, 3).cuda() 
+        hat_u = F.normalize(u, dim=-1)
+        u = hat_u * theta.unsqueeze(-1)
+
+        # Apply
+        backbone = bind_X[:,:,:4].clone()
+        center = bind_X[:,:,1:2,:].clone()  # CA is the rotation center
+        bind_X = bind_X - center
+        bind_X = bind_X.view(B*N, 14, 3)
+        bind_X = self.sc_rotate(bind_X, u)
+        bind_X = bind_X.view(B, N, 14, 3) + center
+        bind_X = torch.cat((backbone, bind_X[:,:,4:]), dim=-2)
+        bind_X = bind_X * (bind_A > 0).float().unsqueeze(-1)
+        return bind_X
 
     def forward(self, binder, target, use_sidechain=True):
         true_X, bind_S, bind_A, _ = binder

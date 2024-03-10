@@ -24,5 +24,8 @@ git checkout 3.0.0-dev
 pip install .
 ```
 
+Also install
+* chemprop (https://chemprop.readthedocs.io/en/latest/installation.html#option-2-installing-from-source)
+
 # Inference
 This notebook `tutorials.ipynb` contains all the relevation information on predicting binding energy for protein-ligand, protein-protein, and antibody-antigen complexes.

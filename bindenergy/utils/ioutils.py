@@ -33,7 +33,13 @@ def print_ca_pdb(coord, seq, chain, indices=None):
 
 
 def load_esm_embedding(data, fields):
+    # models = {'3B': (esm.pretrained.esm2_t36_3B_UR50D, 36),
+    #           '650M': (esm.pretrained.esm2_t33_650M_UR50D, 33)}
+    # esmmodel, layer_size = models[model_size]
+    # model, alphabet = esmmodel()
     model, alphabet = esm.pretrained.esm2_t36_3B_UR50D()
+    # model, alphabet = esm.pretrained.esm2_t33_650M_UR50D()
+    
     batch_converter = alphabet.get_batch_converter()
     model = model.cuda()
     model.eval()
@@ -44,6 +50,8 @@ def load_esm_embedding(data, fields):
             for s in tqdm(sorted(set(seqs))):
                 batch_labels, batch_strs, batch_tokens = batch_converter([(s, s)])
                 batch_tokens = batch_tokens.cuda()
+                # results = model(batch_tokens, repr_layers=[layer_size], return_contacts=False)
+                # embedding[s] = results["representations"][layer_size][0, 1:len(s)+1].cpu()
                 results = model(batch_tokens, repr_layers=[36], return_contacts=False)
                 embedding[s] = results["representations"][36][0, 1:len(s)+1].cpu()
     return embedding
